@@ -1,16 +1,17 @@
 package com.nibado.example.jwtangspr;
 
 import java.io.Serializable;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 import javax.annotation.PostConstruct;
 import javax.servlet.ServletException;
+import javax.servlet.http.Cookie;
+import javax.servlet.http.HttpServletResponse;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.http.HttpRequest;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -29,18 +30,18 @@ public class UserController {
 	@PostConstruct
 	public void init() {
 		UserInformation user1 = new UserInformation();
-		user1.profiles = "user";
+		user1.profiles = new ArrayList<String> () {{ add("user"); }};
 		user1.name = "tom";
 		stringRedisTemplate.opsForHash().putAll("User:" + user1.name, user1.toMap());
 
 		UserInformation user2 = new UserInformation();
-		user2.profiles = "admin";
+		user2.profiles = new ArrayList<String> () {{ add("admin"); }};
 		user2.name = "sally";
 		stringRedisTemplate.opsForHash().putAll("User:" + user2.name, user2.toMap());
 	}
 
-	@RequestMapping(value = "/", method = RequestMethod.POST)
-	public Token sendUserInformation(@RequestBody final UserInformation user) throws ServletException {
+	@RequestMapping(value = "/login", method = RequestMethod.POST)
+	public void sendUserInformation(@RequestBody final UserInformation user, HttpServletResponse response) throws ServletException {
 
 		if (user.name == null) {
 			throw new ServletException("Invalid login");
@@ -52,10 +53,13 @@ public class UserController {
 			throw new ServletException("Invalid login");
 		}
 
-		final String jwt = Jwts.builder().setSubject(user.name).claim("roles", user1).setIssuedAt(new Date())
+		final String jwt = Jwts.builder().setSubject(user.name).claim("roles", user1.getProfiles()).setIssuedAt(new Date())
 				.signWith(SignatureAlgorithm.HS256, "secretkey").compact();
-		stringRedisTemplate.opsForValue().set(user1.name, jwt, 24, TimeUnit.HOURS);
-		return new Token(jwt);
+		stringRedisTemplate.opsForValue().set("Token:" + user1.name, jwt, 24, TimeUnit.HOURS);
+		Cookie cookie = new Cookie("X-AUTH-TOKEN", jwt);
+		cookie.setMaxAge(100000);
+		cookie.setPath("/");
+		response.addCookie(cookie);
 	}
 
 	private static class UserInformation implements Serializable {
@@ -63,7 +67,7 @@ public class UserController {
 		private static final long serialVersionUID = 441251932471408122L;
 
 		private String name;
-		private String profiles;
+		private List<String> profiles;
 
 		public String getName() {
 			return name;
@@ -73,18 +77,18 @@ public class UserController {
 			this.name = name;
 		}
 
-		public String getProfiles() {
+		public List<String> getProfiles() {
 			return profiles;
 		}
 
-		public void setProfiles(String profiles) {
+		public void setProfiles(List<String> profiles) {
 			this.profiles = profiles;
 		}
 
 		public static UserInformation toObject(Map<Object, Object> map) {
 			UserInformation user = new UserInformation();
 			user.name = (String) map.get("name");
-			user.profiles = (String) map.get("profiles");
+			user.profiles = Arrays.asList(map.get("profiles").toString().split(","));
 			return user;
 		}
 
@@ -96,7 +100,7 @@ public class UserController {
 			}
 
 			if (profiles != null) {
-				properties.put("profiles", profiles);
+				properties.put("profiles", String.join(",", profiles));
 			}
 
 			return properties;

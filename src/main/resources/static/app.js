@@ -1,7 +1,7 @@
-var appModule = angular.module('myApp', []);
+var appModule = angular.module('myApp', ['ngCookies']);
 
-appModule.controller('MainCtrl', ['mainService','$scope','$http',
-        function(mainService, $scope, $http) {
+appModule.controller('MainCtrl', ['mainService','$scope','$http','$cookies',
+        function(mainService, $scope, $http, $cookies) {
             $scope.greeting = 'Welcome to the JSON Web Token / AngularJR / Spring example!';
             $scope.token = null;
             $scope.error = null;
@@ -12,13 +12,10 @@ appModule.controller('MainCtrl', ['mainService','$scope','$http',
             $scope.login = function() {
                 $scope.error = null;
                 mainService.login($scope.userName).then(function(token) {
-                    $scope.token = token;
-                    $http.defaults.headers.common.Authorization = 'Bearer ' + token;
                     $scope.checkRoles();
                 },
                 function(error){
                     $scope.error = error
-                    $scope.userName = '';
                 });
             }
 
@@ -29,23 +26,22 @@ appModule.controller('MainCtrl', ['mainService','$scope','$http',
             }
 
             $scope.logout = function() {
-                $scope.userName = '';
-                $scope.token = null;
-                $http.defaults.headers.common.Authorization = '';
+                delete $cookies["X-AUTH-TOKEN"];
             }
 
             $scope.loggedIn = function() {
-                return $scope.token !== null;
+                var authToken = $cookies["X-AUTH-TOKEN"];
+                return authToken != null;
             }
         } ]);
 
 
 
-appModule.service('mainService', function($http) {
+appModule.service('mainService', function($http, $location) {
     return {
         login : function(username) {
             return $http.post('/user/login', {name: username}).then(function(response) {
-                return response.data.token;
+                $location.path('/');
             });
         },
 
